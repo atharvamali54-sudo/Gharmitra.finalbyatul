@@ -42,9 +42,16 @@ function queueNotification(orderId, type, data) {
 
 function isMatchingPendingOrder(order, selectedArea) {
     if (!order || order.status !== 'Pending') return false;
-    const jobService = (order.service || '').replace(/^\/+/, '').trim().toLowerCase();
-    const workerService = (currentWorkerService || '').replace(/^\/+/, '').trim().toLowerCase();
-    return (order.area === selectedArea || !order.area) && jobService === workerService;
+    // Keep matching resilient to extra whitespace, punctuation, and case
+    // differences between the customer form and an existing worker profile.
+    const normalize = value => String(value || '')
+        .replace(/^\/+/, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+    return (!order.area || normalize(order.area) === normalize(selectedArea)) &&
+        normalize(order.service) === normalize(currentWorkerService);
 }
 
 function claimNextOffer() {
@@ -713,17 +720,19 @@ function renderJobs() {
     keys.forEach(key => {
         const item = allOrdersData[key];
         const imgUrl = item.photoUrl || item.imageUrl || item.photo || item.image || null;
-        const isAreaMatch = (item.area === selectedArea || !item.area);
+        const normalize = value => String(value || '')
+            .replace(/^\/+/, '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+        const isAreaMatch = !item.area || normalize(item.area) === normalize(selectedArea);
+        const isServiceMatch = normalize(item.service) === normalize(currentWorkerService);
 
-        const jobService = (item.service || "").replace(/^\/+/, '').trim().toLowerCase();
-        const workerService = (currentWorkerService || "").replace(/^\/+/, '').trim().toLowerCase();
-        const isServiceMatch = (jobService === workerService);
-
-        // An assigned worker must finish the active order before seeing any
-        // other pending order.  A pending job is visible only during this
-        // worker's exclusive 30-second offer window.
-        const isCurrentWorkersOffer = item.offerWorkerUid === currentWorkerUid && Number(item.offerExpiresAt) > orderNow();
-        if (!activeOrderId && item.status === 'Pending' && isAreaMatch && isServiceMatch && isCurrentWorkersOffer) {
+        // Every on-duty worker with the matching area and service can see a
+        // pending job.  The accept transaction below still awards it to only
+        // one worker, so multiple workers cannot accept the same order.
+        if (isDutyOn && !activeOrderId && item.status === 'Pending' && isAreaMatch && isServiceMatch) {
             pendingCount++;
             const jobCard = document.createElement('div');
             jobCard.className = "bg-slate-50 border border-slate-200 p-4 rounded-2xl hover:border-blue-400 transition shadow-sm space-y-3";
@@ -853,8 +862,7 @@ function acceptOrder(orderId) {
 
             database.ref("orders/" + orderId).transaction(
                 order => {
-                    if (!order || order.status !== 'Pending' || order.workerUid ||
-                        order.offerWorkerUid !== currentWorkerUid || Number(order.offerExpiresAt) <= orderNow()) {
+                    if (!order || order.status !== 'Pending' || order.workerUid) {
                         return;
                     }
 
