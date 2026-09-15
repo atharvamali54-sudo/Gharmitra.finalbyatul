@@ -1,4 +1,6 @@
-let isDutyOn = false;
+// A worker should receive matching jobs immediately after opening the
+// dashboard.  Persist an explicit OFF choice, but default new workers to ON.
+let isDutyOn = localStorage.getItem('gharkam_duty_state') !== 'off';
 let allOrdersData = null;
 let currentWorkerUid = null;
 let currentWorkerService = "Cleaning"; 
@@ -147,6 +149,7 @@ function startDispatchTimers() {
 // Page Load Var Local Session Check
 document.addEventListener("DOMContentLoaded", () => {
     loadLocalWorkerSession();
+    syncDutyUI();
 });
 
 function loadLocalWorkerSession() {
@@ -657,8 +660,7 @@ function closeImagePreview() {
   document.getElementById('previewModalImg').src = "";
 }
 
-function toggleDuty() {
-    isDutyOn = !isDutyOn;
+function syncDutyUI() {
     const btn = document.getElementById('dutyToggleBtn');
     const headerDot = document.getElementById('dutyDot');
     const headerText = document.getElementById('dutyText');
@@ -674,6 +676,12 @@ function toggleDuty() {
         headerDot.className = "w-2 h-2 rounded-full bg-red-500";
         headerText.innerText = "Duty OFF";
     }
+}
+
+function toggleDuty() {
+    isDutyOn = !isDutyOn;
+    localStorage.setItem('gharkam_duty_state', isDutyOn ? 'on' : 'off');
+    syncDutyUI();
     renderJobs();
 }
 
